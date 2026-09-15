@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXF Coordinate Shifter</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #252526;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+        }
+        h2 { margin-top: 0; color: #fff; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; }
+        input[type="number"], input[type="file"] {
+            width: 100%;
+            padding: 0.5rem;
+            background-color: #3c3c3c;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        button:hover { background-color: #1177bb; }
+        #status {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            text-align: center;
+            color: #4caf50;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>DXF Coordinate Shifter</h2>
+    <div class="form-group">
+        <label for="dxfFile">Select DXF File</label>
+        <input type="file" id="dxfFile" accept=".dxf">
+    </div>
+    <div class="form-group">
+        <label for="shiftX">Increment Easting (X-axis, feet)</label>
+        <input type="number" id="shiftX" step="any" value="5.1">
+    </div>
+    <div class="form-group">
+        <label for="shiftY">Increment Northing (Y-axis, feet)</label>
+        <input type="number" id="shiftY" step="any" value="-2.25">
+    </div>
+    <button id="processBtn">Process & Download</button>
+    <div id="status"></div>
+</div>
+
+<script>
+    document.getElementById('processBtn').addEventListener('click', () => {
+        const fileInput = document.getElementById('dxfFile');
+        const shiftX = parseFloat(document.getElementById('shiftX').value);
+        const shiftY = parseFloat(document.getElementById('shiftY').value);
+        const statusEl = document.getElementById('status');
+
+        if (!fileInput.files.length) {
+            statusEl.style.color = '#f44336';
+            statusEl.textContent = 'Please select a DXF file first.';
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+            const text = e.target.result;
+            const shiftedText = translateDXF(text, shiftX, shiftY);
+            
+            // Create a blob and trigger download
+            const blob = new Blob([shiftedText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            // Append _shifted to the original filename
+            const originalName = file.name;
+            const dotIndex = originalName.lastIndexOf('.');
+            const newName = originalName.substring(0, dotIndex) + '_shifted.dxf';
+            
+            a.href = url;
+            a.download = newName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            statusEl.style.color = '#4caf50';
+            statusEl.textContent = 'Processing complete! File downloaded.';
+        };
+
+        reader.readAsText(file);
+    });
+
+    function translateDXF(text, dx, dy) {
+        const lines = text.split(/\r?\n/);
+        const xCodes = new Set(['10', '11']); // Primary and secondary X coordinates
+        const yCodes = new Set(['20', '21']); // Primary and secondary Y coordinates
+        
+        let outLines = [];
+        let i = 0;
+        
+        while (i < lines.length) {
+            let line = lines[i];
+            let trimmed = line.trim();
+            outLines.push(line);
+
+            if (xCodes.has(trimmed) && i + 1 < lines.length) {
+                let val = parseFloat(lines[i + 1]);
+                if (!isNaN(val)) {
+                    outLines.push(String(val + dx));
+                    i++;
+                }
+            } else if (yCodes.has(trimmed) && i + 1 < lines.length) {
+                let val = parseFloat(lines[i + 1]);
+                if (!isNaN(val)) {
+                    outLines.push(String(val + dy));
+                    i++;
+                }
+            }
+            i++;
+        }
+        return outLines.join('\n');
+    }
+</script>
+
+</body>
+</html>
