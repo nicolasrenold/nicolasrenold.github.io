@@ -130,21 +130,41 @@
     }
 
     function processDXF(text, xShiftFeet, yShiftFeet) {
-        // DXF files are structured in pairs: Group Code (line n) and Value (line n+1).
         const lines = text.split(/\r?\n/);
+        
+        // Group codes for spatial X and Y coordinates (Start, End, Center, Insertion, Vertex, etc.)
         const xCodes = ['10', '11', '12', '13', '14'];
         const yCodes = ['20', '21', '22', '23', '24'];
         
-        for (let i = 0; i < lines.length - 1; i++) {
+        let inTargetSection = false;
+        
+        // Iterate by 2 because DXF format strictly alternates: Group Code, then Value
+        for (let i = 0; i < lines.length - 1; i += 2) {
             let code = lines[i].trim();
+            let valStr = lines[i + 1];
+            let valTrim = valStr.trim();
             
-            // Note: This applies the shift to all standard X/Y geometry codes globally.
-            if (xCodes.includes(code)) {
-                let val = parseFloat(lines[i + 1]);
-                if (!isNaN(val)) lines[i + 1] = (val + xShiftFeet).toFixed(6);
-            } else if (yCodes.includes(code)) {
-                let val = parseFloat(lines[i + 1]);
-                if (!isNaN(val)) lines[i + 1] = (val + yShiftFeet).toFixed(6);
+            // Check if we are entering a new SECTION
+            if (code === '0' && valTrim === 'SECTION') {
+                // The section name is always located 3 lines down from the '0'
+                let sectionName = lines[i + 3] ? lines[i + 3].trim() : '';
+                // Only enable shifting if we are entering ENTITIES or BLOCKS
+                inTargetSection = (sectionName === 'ENTITIES' || sectionName === 'BLOCKS');
+            } 
+            // Turn off shifting if we hit the end of the file or exit a section
+            else if (code === '0' && valTrim === 'EOF') {
+                inTargetSection = false;
+            }
+
+            // Only modify geometry if we are safely inside the correct sections
+            if (inTargetSection) {
+                if (xCodes.includes(code)) {
+                    let val = parseFloat(valStr);
+                    if (!isNaN(val)) lines[i + 1] = (val + xShiftFeet).toFixed(6);
+                } else if (yCodes.includes(code)) {
+                    let val = parseFloat(valStr);
+                    if (!isNaN(val)) lines[i + 1] = (val + yShiftFeet).toFixed(6);
+                }
             }
         }
         return lines.join('\n');
