@@ -121,10 +121,14 @@
 
     function translateDXF(text, dx, dy) {
         const lines = text.split(/\r?\n/);
-        const xCodes = new Set(['10', '11']); // Primary and secondary X coordinates
-        const yCodes = new Set(['20', '21']); // Primary and secondary Y coordinates
+        const xCodes = new Set(['10', '11']); 
+        const yCodes = new Set(['20', '21']); 
+        
+        // Entities we actually want to move
+        const shiftableEntities = new Set(['VERTEX', 'LWPOLYLINE', 'LINE', 'POINT', 'CIRCLE', 'ARC', 'INSERT']);
         
         let outLines = [];
+        let currentEntity = '';
         let i = 0;
         
         while (i < lines.length) {
@@ -132,17 +136,25 @@
             let trimmed = line.trim();
             outLines.push(line);
 
-            if (xCodes.has(trimmed) && i + 1 < lines.length) {
-                let val = parseFloat(lines[i + 1]);
-                if (!isNaN(val)) {
-                    outLines.push(String(val + dx));
-                    i++;
-                }
-            } else if (yCodes.has(trimmed) && i + 1 < lines.length) {
-                let val = parseFloat(lines[i + 1]);
-                if (!isNaN(val)) {
-                    outLines.push(String(val + dy));
-                    i++;
+            // Track the current entity type being processed
+            if (trimmed === '0' && i + 1 < lines.length) {
+                currentEntity = lines[i + 1].trim();
+            }
+
+            // Only shift if we are inside a geometry entity (ignores HEADER vars and POLYLINE dummies)
+            if (shiftableEntities.has(currentEntity)) {
+                if (xCodes.has(trimmed) && i + 1 < lines.length) {
+                    let val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        outLines.push(String(val + dx));
+                        i++;
+                    }
+                } else if (yCodes.has(trimmed) && i + 1 < lines.length) {
+                    let val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        outLines.push(String(val + dy));
+                        i++;
+                    }
                 }
             }
             i++;
