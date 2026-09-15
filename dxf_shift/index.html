@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DXF Coordinate Shifter v1.2</title>
+    <title>DXF Coordinate Shifter v1.3</title>
+    <!-- Include Decimal.js for arbitrary-precision math -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/decimal.js/10.4.3/decimal.min.js"></script>
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -21,20 +23,30 @@
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             width: 100%;
-            max-width: 420px;
+            max-width: 450px;
         }
         h2 { margin-top: 0; color: #fff; }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; }
-        .help-text { color: #888; font-size: 0.8rem; margin-top: 0.2rem; display: block; }
+        .form-group { margin-bottom: 1.25rem; }
+        label { display: block; margin-bottom: 0.5rem; font-size: 0.95rem; font-weight: bold; color: #fff; }
+        .help-text { 
+            color: #aaa; 
+            font-size: 0.85rem; 
+            margin-top: 0.4rem; 
+            display: block; 
+            background: #333;
+            padding: 8px;
+            border-left: 3px solid #0e639c;
+            border-radius: 0 4px 4px 0;
+        }
         input[type="number"], input[type="file"] {
             width: 100%;
-            padding: 0.5rem;
+            padding: 0.6rem;
             background-color: #3c3c3c;
             border: 1px solid #555;
             color: #fff;
             border-radius: 4px;
             box-sizing: border-box;
+            font-size: 1rem;
         }
         button {
             width: 100%;
@@ -50,39 +62,47 @@
         button:hover { background-color: #1177bb; }
         #status {
             margin-top: 1rem;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             text-align: center;
-            color: #4caf50;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>DXF Coordinate Shifter v1.2</h2>
+    <h2>DXF Coordinate Shifter v1.3</h2>
     <div class="form-group">
         <label for="dxfFile">Select DXF File</label>
         <input type="file" id="dxfFile" accept=".dxf">
     </div>
+    
     <div class="form-group">
-        <label for="shiftX">Shift X-axis (Feet)</label>
-        <input type="number" id="shiftX" step="any" value="5.1">
-        <span class="help-text">Enter <strong>+</strong> value to shift East, <strong>-</strong> to shift West</span>
+        <label for="shiftX">Shift East/West (X-axis, feet)</label>
+        <input type="number" id="shiftX" step="any" value="5.09">
+        <span class="help-text"><strong>Ground to CAD:</strong> Enter a positive (<strong>+</strong>) value to shift East, negative (<strong>-</strong>) to shift West.</span>
     </div>
+    
     <div class="form-group">
-        <label for="shiftY">Shift Y-axis (Feet)</label>
-        <input type="number" id="shiftY" step="any" value="-2.25">
-        <span class="help-text">Enter <strong>+</strong> value to shift North, <strong>-</strong> to shift South</span>
+        <label for="shiftY">Shift North/South (Y-axis, feet)</label>
+        <input type="number" id="shiftY" step="any" value="-2.265">
+        <span class="help-text"><strong>Ground to CAD:</strong> Enter a positive (<strong>+</strong>) value to shift North, negative (<strong>-</strong>) to shift South.</span>
     </div>
+    
     <button id="processBtn">Process & Download</button>
     <div id="status"></div>
 </div>
 
 <script>
+    // Set Decimal.js to handle up to 50 significant digits to prevent rounding on extreme precision
+    Decimal.set({ precision: 50 });
+
     document.getElementById('processBtn').addEventListener('click', () => {
         const fileInput = document.getElementById('dxfFile');
-        const shiftX = parseFloat(document.getElementById('shiftX').value);
-        const shiftY = parseFloat(document.getElementById('shiftY').value);
+        
+        // Pull input as strings to feed directly into Decimal.js without native float rounding
+        const shiftXStr = document.getElementById('shiftX').value;
+        const shiftYStr = document.getElementById('shiftY').value;
         const statusEl = document.getElementById('status');
 
         if (!fileInput.files.length) {
@@ -91,40 +111,56 @@
             return;
         }
 
+        let dxDec, dyDec;
+        try {
+            dxDec = new Decimal(shiftXStr || "0");
+            dyDec = new Decimal(shiftYStr || "0");
+        } catch (e) {
+            statusEl.style.color = '#f44336';
+            statusEl.textContent = 'Invalid shift values. Please enter numbers.';
+            return;
+        }
+
         const file = fileInput.files[0];
         const reader = new FileReader();
 
         reader.onload = function(e) {
-            const text = e.target.result;
-            const shiftedText = translateDXF(text, shiftX, shiftY);
-            
-            const blob = new Blob([shiftedText], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            
-            const originalName = file.name;
-            const dotIndex = originalName.lastIndexOf('.');
-            const newName = originalName.substring(0, dotIndex) + '_shifted.dxf';
-            
-            a.href = url;
-            a.download = newName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            try {
+                statusEl.style.color = '#aaa';
+                statusEl.textContent = 'Processing...';
 
-            statusEl.style.color = '#4caf50';
-            statusEl.textContent = 'Processing complete! File downloaded.';
+                const text = e.target.result;
+                const shiftedText = translateDXF(text, dxDec, dyDec);
+                
+                const blob = new Blob([shiftedText], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                
+                const originalName = file.name;
+                const dotIndex = originalName.lastIndexOf('.');
+                const newName = originalName.substring(0, dotIndex) + '_shifted.dxf';
+                
+                a.href = url;
+                a.download = newName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                statusEl.style.color = '#4caf50';
+                statusEl.textContent = 'Processing complete! File downloaded.';
+            } catch (err) {
+                console.error(err);
+                statusEl.style.color = '#f44336';
+                statusEl.textContent = 'Error processing file. Check console.';
+            }
         };
 
         reader.readAsText(file);
     });
 
-    function translateDXF(text, dx, dy) {
-        // Detect original EOL character
+    function translateDXF(text, dxDec, dyDec) {
         const eol = text.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
-        
-        // Split handling both Windows and Unix line endings
         const lines = text.split(/\r?\n/);
         
         const xCodes = new Set(['10', '11']); 
@@ -147,16 +183,31 @@
             }
 
             if (shiftableEntities.has(currentEntity)) {
-                if (xCodes.has(trimmed) && i + 1 < lines.length) {
-                    let val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
-                        outLines.push(String(val + dx));
+                let isX = xCodes.has(trimmed);
+                let isY = yCodes.has(trimmed);
+
+                if ((isX || isY) && i + 1 < lines.length) {
+                    let origStr = lines[i + 1].trim();
+                    try {
+                        let origDec = new Decimal(origStr);
+                        let shiftDec = isX ? dxDec : dyDec;
+                        let resultDec = origDec.plus(shiftDec);
+
+                        // Determine original decimal places
+                        let parts = origStr.split('.');
+                        
+                        // If standard notation, lock formatting to the exact original decimal count
+                        if (parts.length === 2 && !origStr.toLowerCase().includes('e')) {
+                            let decimals = parts[1].length;
+                            outLines.push(resultDec.toFixed(decimals));
+                        } else {
+                            // If it's a whole number or uses scientific notation, use default stringification
+                            outLines.push(resultDec.toString());
+                        }
                         i++;
-                    }
-                } else if (yCodes.has(trimmed) && i + 1 < lines.length) {
-                    let val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
-                        outLines.push(String(val + dy));
+                    } catch (e) {
+                        // If it fails to parse as a number for any reason, push the original string unchanged
+                        outLines.push(lines[i + 1]);
                         i++;
                     }
                 }
@@ -164,7 +215,6 @@
             i++;
         }
         
-        // Rejoin using the originally detected EOL
         return outLines.join(eol);
     }
 </script>
