@@ -166,11 +166,12 @@
         const xCodes = new Set(['10', '11']); 
         const yCodes = new Set(['20', '21']); 
         
-        // Entities we actually want to move
+        // Target geometry entities AND boundary header variables
         const shiftableEntities = new Set(['VERTEX', 'LWPOLYLINE', 'LINE', 'POINT', 'CIRCLE', 'ARC', 'INSERT']);
+        const shiftableHeaderVars = new Set(['$EXTMIN', '$EXTMAX']);
         
         let outLines = [];
-        let currentEntity = '';
+        let currentContext = '';
         let i = 0;
         
         while (i < lines.length) {
@@ -178,11 +179,15 @@
             let trimmed = line.trim();
             outLines.push(line);
 
+            // Track if we are inside a geometry entity (0) or a header variable (9)
             if (trimmed === '0' && i + 1 < lines.length) {
-                currentEntity = lines[i + 1].trim();
+                currentContext = lines[i + 1].trim();
+            } else if (trimmed === '9' && i + 1 < lines.length) {
+                currentContext = lines[i + 1].trim();
             }
 
-            if (shiftableEntities.has(currentEntity)) {
+            // Only shift if the current context is in our approved lists
+            if (shiftableEntities.has(currentContext) || shiftableHeaderVars.has(currentContext)) {
                 let isX = xCodes.has(trimmed);
                 let isY = yCodes.has(trimmed);
 
@@ -193,20 +198,19 @@
                         let shiftDec = isX ? dxDec : dyDec;
                         let resultDec = origDec.plus(shiftDec);
 
-                        // Determine original decimal places
                         let parts = origStr.split('.');
                         
-                        // If standard notation, lock formatting to the exact original decimal count
+                        // Lock formatting to the exact original decimal count
                         if (parts.length === 2 && !origStr.toLowerCase().includes('e')) {
                             let decimals = parts[1].length;
                             outLines.push(resultDec.toFixed(decimals));
                         } else {
-                            // If it's a whole number or uses scientific notation, use default stringification
+                            // Fallback for whole numbers or scientific notation
                             outLines.push(resultDec.toString());
                         }
                         i++;
                     } catch (e) {
-                        // If it fails to parse as a number for any reason, push the original string unchanged
+                        // Pass unchanged if string fails to parse
                         outLines.push(lines[i + 1]);
                         i++;
                     }
